@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tata Power | Causal AI & Load Analysis Platform</title>
+  <meta name="description" content="Tata Power Electricity Load Analysis with DTW, SQLite, Parameter-to-SQL, EconML Causal Forests, and Local LLM (gemma-4-e2b).">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-badge">
+        <span class="pulse-dot"></span>
+        <span class="brand-name">TATA POWER</span>
+      </div>
+      <div class="divider"></div>
+      <h1 class="header-title">Causal AI & Diurnal Load Platform</h1>
+    </div>
+    <div class="header-right">
+      <div class="model-badge">
+        <span class="icon">⚡</span>
+        <span>Local Model: <strong>gemma-4-e2b</strong></span>
+      </div>
+      <div class="status-indicator">
+        <span class="status-dot online"></span>
+        <span>SQLite + DML Online</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-container">
+    <!-- Top Control Bar: Season & Date Selector -->
+    <section class="control-panel glass-card">
+      <div class="control-group">
+        <label for="seasonSelect">Active Season</label>
+        <div class="select-wrapper">
+          <select id="seasonSelect">
+            <option value="Autumn" selected>Autumn 2024</option>
+            <option value="Summer">Summer 2024</option>
+            <option value="Monsoon">Monsoon 2024</option>
+            <option value="Winter">Winter 2024</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="dateSelect">Select Observation Day (96 Intervals)</label>
+        <div class="select-wrapper">
+          <select id="dateSelect">
+            <option value="">Loading dates...</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="control-stats">
+        <div class="stat-pill">
+          <span class="stat-label">Daily Mean Load:</span>
+          <span class="stat-val" id="dayMeanLoad">-- MW</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Peak Load:</span>
+          <span class="stat-val" id="dayPeakLoad">-- MW</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Mean Temp:</span>
+          <span class="stat-val" id="dayMeanTemp">-- °C</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 1: Causal Estimates & Hourly HTE -->
+    <section class="causal-row">
+      <div class="causal-cards-container">
+        <!-- Weather Causal Cards -->
+        <div class="glass-card stat-card" id="tempCausalCard">
+          <div class="card-header-sm">
+            <span class="card-tag tag-primary">Continuous Treatment (EconML)</span>
+            <span class="card-icon">🌡️</span>
+          </div>
+          <div class="card-title">Temperature Effect ($\beta_{temp}$)</div>
+          <div class="card-value" id="betaTempValue">+6.71 <span class="unit">MW / °C</span></div>
+          <div class="ci-range">95% CI: <span id="tempCi">[+5.82, +7.59]</span></div>
+          <div class="card-footnote">Average marginal effect across seasonal grid observations</div>
+        </div>
+
+        <div class="glass-card stat-card" id="rhCausalCard">
+          <div class="card-header-sm">
+            <span class="card-tag tag-cyan">Continuous Treatment (EconML)</span>
+            <span class="card-icon">💧</span>
+          </div>
+          <div class="card-title">Humidity Effect ($\beta_{rh}$)</div>
+          <div class="card-value" id="betaRhValue">+0.84 <span class="unit">MW / %</span></div>
+          <div class="ci-range">95% CI: <span id="rhCi">[+0.31, +1.38]</span></div>
+          <div class="card-footnote">Marginal demand shift per 1% change in relative humidity</div>
+        </div>
+
+        <div class="glass-card stat-card" id="festivalCausalCard">
+          <div class="card-header-sm">
+            <span class="card-tag tag-amber">Binary Calendar Factor</span>
+            <span class="card-icon">🪔</span>
+          </div>
+          <div class="card-title">Festival Impact ($\beta_{fest}$)</div>
+          <div class="card-value" id="betaFestValue">+18.40 <span class="unit">MW</span></div>
+          <div class="ci-range">95% CI: <span id="festCi">[+15.64, +21.16]</span></div>
+          <div class="card-footnote">Net causal demand deviation during festive scheduling</div>
+        </div>
+      </div>
+
+      <!-- Diurnal HTE Chart -->
+      <div class="glass-card hte-chart-card">
+        <div class="card-header">
+          <div>
+            <h3 id="hteCardTitle">24-Hour Diurnal Heterogeneous Treatment Effect (HTE)</h3>
+            <p class="subtitle" id="hteCardSubtitle">Hourly causal sensitivity curves for selected date (<span id="hteDateDisplay" style="color: var(--accent-cyan); font-weight: 600;">2024-01-30</span>)</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <div class="btn-group" style="display: flex; gap: 0.35rem;">
+              <button id="hteViewAllBtn" class="btn btn-sm btn-outline active" title="Show all 6 treatment variables (Temperature, RH, Weekend, Holiday, Festival, Office)">All 6 Drivers</button>
+              <button id="hteViewTempBtn" class="btn btn-sm btn-outline" title="Show only Temperature effect curve">Temp Only</button>
+            </div>
+            <span class="badge-accent" id="hteDateBadge">2024-01-30</span>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="hteChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 2: 96-Interval Diurnal Curve & DTW Shape Matching -->
+    <section class="dtw-section glass-card">
+      <div class="card-header">
+        <div>
+          <h3>Diurnal 96-Interval Load Curve & DTW Nearest Neighbors</h3>
+          <p class="subtitle">Complete 15-minute load profile compared against historical days using normalized Dynamic Time Warping</p>
+        </div>
+        <div class="dtw-controls">
+          <button id="toggleDtwMatchesBtn" class="btn btn-outline active">Overlay Top 3 DTW Matches</button>
+        </div>
+      </div>
+      <div class="dtw-content-grid">
+        <div class="chart-wrapper-lg">
+          <canvas id="loadCurveChart"></canvas>
+        </div>
+        <div class="dtw-matches-sidebar">
+          <h4>Top Similar Historical Days (DTW)</h4>
+          <p class="disclaimer-text">⚠️ Morphological shape similarity only (Non-Causal)</p>
+          <div class="matches-list" id="dtwMatchesList">
+            <div class="loading-spinner">Searching nearest historical days...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 3: XAI Interpretability & Safe Parameter-to-SQL Query Console -->
+    <section class="bottom-grid">
+      <!-- SHAP Global Importance -->
+      <div class="glass-card shap-card">
+        <div class="card-header">
+          <div>
+            <h3>Machine Learning Feature Attributions (SHAP)</h3>
+            <p class="subtitle">Global predictive influence derived via TreeExplainer from baseline XGBoost model</p>
+          </div>
+          <span class="badge-blue">Predictive XAI</span>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="shapChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Safe Parameter-to-SQL Search Console -->
+      <div class="glass-card sql-console-card">
+        <div class="card-header">
+          <div>
+            <h3>Safe Parameter-to-SQL Console</h3>
+            <p class="subtitle">Queries load_data via Pydantic intent schema and parameterized SELECT templates</p>
+          </div>
+          <span class="badge-green">Injection-Proof</span>
+        </div>
+        
+        <div class="console-body">
+          <div class="search-input-box">
+            <input type="text" id="nlQueryInput" placeholder="e.g., What was the average load during summer festival days in 2024?">
+            <button id="runQueryBtn" class="btn btn-primary">Execute</button>
+          </div>
+          <div class="sample-queries">
+            <span>Quick Samples:</span>
+            <button class="chip" data-q="What was the average load during summer festival days in 2024?">Summer Festival Load</button>
+            <button class="chip" data-q="What was the peak temperature in monsoon?">Monsoon Peak Temp</button>
+            <button class="chip" data-q="Average load by hour in winter">Winter Hourly Load</button>
+          </div>
+
+          <div class="sql-result-panel" id="sqlResultPanel">
+            <div class="sql-preview-box">
+              <span class="preview-label">Generated Parameterized SQL:</span>
+              <code id="sqlPreviewCode">SELECT ROUND(AVG(wdLoad), 2) as aggregate_value FROM load_data WHERE season = 'Summer' AND festival = 1</code>
+            </div>
+            <div class="query-answer-row">
+              <div class="answer-box">
+                <span class="answer-label">Calculated Result:</span>
+                <span class="answer-val" id="queryAnswerVal">384.25 MW</span>
+              </div>
+              <div class="sample-box">
+                <span class="answer-label">Matched Intervals:</span>
+                <span class="sample-val" id="querySampleVal">96 intervals</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Row 4: Interactive AI Reasoning Console (LM Studio: gemma-4-e2b) -->
+    <section class="explanation-section glass-card">
+      <div class="card-header">
+        <div>
+          <h3>Interactive Causal AI Reasoning Console (LM Studio: gemma-4-e2b)</h3>
+          <p class="subtitle">Ask any question about load behavior — the LLM queries SQLite, gathers EconML causal estimates, hourly HTE, and DTW matches to reason the answer</p>
+        </div>
+        <div class="header-action-buttons">
+          <button id="generateExplanationBtn" class="btn btn-outline">
+            <span>📅 Explain Selected Day</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="prompt-input-container">
+        <div class="prompt-input-row">
+          <input type="text" id="llmPromptInput" placeholder="Ask gemma-4-e2b, e.g.: 'Why was load high on summer festival days?' or 'How does afternoon temperature affect grid demand compared to night?'">
+          <button id="askLlmBtn" class="btn btn-glow">
+            <span>⚡ Ask gemma-4-e2b</span>
+          </button>
+        </div>
+        <div class="prompt-chips">
+          <span>Try Prompts:</span>
+          <button class="chip prompt-chip" data-p="Why was load unusually high on 15 Oct 2024 at 3 PM?">15 Oct 3 PM Load Spike</button>
+          <button class="chip prompt-chip" data-p="Compare load between 2024-04-15 and 2024-04-16">Compare 15 Apr vs 16 Apr</button>
+          <button class="chip prompt-chip" data-p="Compare summer and winter load drivers">Compare Summer vs Winter</button>
+          <button class="chip prompt-chip" data-p="Compare monsoon and summer temperature sensitivity">Compare Monsoon vs Summer</button>
+          <button class="chip prompt-chip" data-p="How does afternoon temperature affect load at 2 PM compared to 4 AM?">Afternoon vs Night HTE</button>
+        </div>
+      </div>
+
+      <div class="explanation-container">
+        <div class="evidence-packet-view">
+          <div class="evidence-header">
+            <span>Structured Evidence Packet (DB + EconML + DTW)</span>
+            <span class="packet-tag" id="evidenceStatusTag">Verified Evidence</span>
+          </div>
+          <pre id="evidenceJsonViewer"><code>Type a prompt above or click a sample to see the evidence packet and LLM reasoning...</code></pre>
+        </div>
+
+        <div class="explanation-output-view">
+          <div class="explanation-header">
+            <span id="explanationTitle">Synthesized Reasoning (gemma-4-e2b)</span>
+            <span class="audit-tag" id="modelStatusTag">Logged to SQLite</span>
+          </div>
+          <div class="explanation-text" id="explanationText">
+            <p class="placeholder-text">Ask any question above. The local <strong>gemma-4-e2b</strong> model will inspect the database, examine EconML causal estimates, check hourly HTE, and reason through the answer.</p>
+          </div>
+        </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Tata Power Causal AI Platform &bull; Built with EconML Causal Forests, DTW 96-interval alignment, SQLite, and LM Studio (gemma-4-e2b).</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
